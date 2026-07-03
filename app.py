@@ -68,8 +68,38 @@ def _find_font(name: str, dirs: list[Path]) -> Path | None:
     return None
 
 
+def _discover_font_dirs() -> list[Path]:
+    """定位 fonts/ 目录。
+
+    Vercel 等 serverless 平台上 __file__ 所在目录不一定和项目根一致，
+    所以同时尝试多个候选位置，并把当前工作目录也纳入搜索。
+    """
+    candidates: list[Path] = []
+    # 1. 与 app.py 同级的 fonts/
+    candidates.append(Path(__file__).parent / "fonts")
+    # 2. 当前工作目录下的 fonts/（Vercel 上 CWD 通常是项目根）
+    candidates.append(Path.cwd() / "fonts")
+    # 3. 从 CWD 向上找 3 级，看有没有 fonts/
+    p = Path.cwd()
+    for _ in range(3):
+        candidates.append(p / "fonts")
+        p = p.parent
+    # 去重并保持顺序
+    seen: set[Path] = set()
+    result: list[Path] = []
+    for c in candidates:
+        try:
+            resolved = c.resolve()
+        except Exception:
+            resolved = c
+        if resolved not in seen:
+            seen.add(resolved)
+            result.append(c)
+    return result
+
+
 # 搜索优先级: 项目本地 fonts/  →  系统目录  →  自动下载 Google Noto
-_FONT_DIRS = [Path(__file__).parent / "fonts"] + _system_font_dirs()
+_FONT_DIRS = _discover_font_dirs() + _system_font_dirs()
 
 _FONT_CANDIDATES: list[tuple[str, int | None]] = [
     # Windows
@@ -117,6 +147,12 @@ def _download_noto(dest: Path) -> bool:
 
 def register_fonts() -> str:
     """尝试注册一个 CJK 字体。兜底顺序: 本地 → 系统 → 下载 → Helvetica。"""
+    print(f"[font] __file__ = {__file__}")
+    print(f"[font] CWD    = {Path.cwd()}")
+    print(f"[font] search dirs ({len(_FONT_DIRS)}):")
+    for d in _FONT_DIRS:
+        print(f"        {d}  exists={d.exists()}")
+
     for fname, sub in _FONT_CANDIDATES:
         fp = _find_font(fname, _FONT_DIRS)
         if fp is None:
@@ -128,11 +164,17 @@ def register_fonts() -> str:
                 pdfmetrics.registerFont(TTFont("CJK", str(fp)))
             print(f"[font] registered: {fp}")
             return "CJK"
-        except Exception:
+        except Exception as e:
+            print(f"[font] candidate {fname} at {fp} failed: {e}")
             continue
 
     # 所有本地/系统候选都失败 → 尝试下载 Noto
     noto_path = Path(__file__).parent / "fonts" / "NotoSansSC-Regular.ttf"
+    if not noto_path.exists():
+        # 也检查 CWD 下的 fonts/
+        alt = Path.cwd() / "fonts" / "NotoSansSC-Regular.ttf"
+        if alt.exists():
+            noto_path = alt
     if not noto_path.exists():
         print("[font] no system CJK font, downloading Noto Sans SC ...")
         _download_noto(noto_path)
@@ -142,8 +184,8 @@ def register_fonts() -> str:
             pdfmetrics.registerFont(TTFont("CJK", str(noto_path)))
             print(f"[font] registered (downloaded): {noto_path}")
             return "CJK"
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[font] downloaded font failed: {e}")
 
     print("[font] WARNING: no CJK font available, falling back to Helvetica")
     return "Helvetica"
@@ -728,6 +770,24 @@ def generate_pdf(text: str) -> io.BytesIO:
 def index():
     default = "东西南北"
     return render_template("index.html", default_text=default, font_name=FONT_NAME)
+
+
+@app.route("/debug", methods=["GET"])
+def debug():
+    """诊断接口: 返回字体搜索路径和文件系统状态（部署后用于排查）。"""
+    import json
+    info = {
+        "font_name": FONT_NAME,
+        "__file__": __file__,
+        "cwd": str(Path.cwd()),
+        "sys.platform": sys.platform,
+        "search_dirs": [
+            {"path": str(d), "exists": d.exists(),
+             "files": [f.name for f in d.iterdir() if f.is_file()] if d.exists() else []}
+            for d in _FONT_DIRS
+        ],
+    }
+    return info
 
 
 @app.route("/pdf", methods=["GET"])
