@@ -13,7 +13,9 @@
 """
 import io
 import os
+import sys
 import sqlite3
+import urllib.request
 from pathlib import Path
 
 from flask import Flask, render_template, request, send_file, abort
@@ -26,32 +28,124 @@ from reportlab.pdfgen import canvas
 
 
 # ---------------------------------------------------------------------------
-# 字体注册（优先楷体 → 微软雅黑 → 黑体）
+# 字体注册（跨平台：Windows / Linux / macOS + 项目内嵌字体）
 # ---------------------------------------------------------------------------
-FONT_DIR = Path("C:/Windows/Fonts")
-FONT_CANDIDATES = [
+
+def _system_font_dirs() -> list[Path]:
+    """按平台返回候选系统字体目录。"""
+    dirs: list[Path] = []
+    if sys.platform == "win32":
+        dirs.append(Path("C:/Windows/Fonts"))
+    elif sys.platform == "darwin":
+        dirs.append(Path("/Library/Fonts"))
+        dirs.append(Path.home() / "Library/Fonts")
+    else:  # Linux 及 Render / Vercel 等部署环境
+        for d in [
+            "/usr/share/fonts",
+            "/usr/local/share/fonts",
+            "/usr/share/fonts/truetype",
+            "/usr/share/fonts/opentype",
+            "/usr/share/fonts/truetype/noto",
+            "/usr/share/fonts/truetype/dejavu",
+        ]:
+            p = Path(d)
+            if p.exists():
+                dirs.append(p)
+        hf = Path.home() / ".fonts"
+        if hf.exists():
+            dirs.append(hf)
+    return dirs
+
+
+def _find_font(name: str, dirs: list[Path]) -> Path | None:
+    """在 dirs 中递归搜索指定文件名。"""
+    for d in dirs:
+        if not d.exists():
+            continue
+        for f in d.rglob(name):
+            if f.suffix.lower() in (".ttf", ".ttc", ".otf"):
+                return f
+    return None
+
+
+# 搜索优先级: 项目本地 fonts/  →  系统目录  →  自动下载 Google Noto
+_FONT_DIRS = [Path(__file__).parent / "fonts"] + _system_font_dirs()
+
+_FONT_CANDIDATES: list[tuple[str, int | None]] = [
+    # Windows
     ("simkai.ttf", None),
     ("msyh.ttc", 0),
     ("msyh.ttc", 1),
     ("msyhbd.ttc", 0),
     ("simhei.ttf", None),
     ("mingliub.ttc", 0),
+    # Linux 常见 CJK 字体
+    ("NotoSansSC-Regular.ttf", None),
+    ("NotoSansCJK-Regular.ttc", None),
+    ("NotoSansCJK-Bold.ttc", None),
+    ("NotoSansCJKsc-Regular.otf", None),
+    ("NotoSerifCJK-Regular.ttc", None),
+    ("wqy-zenhei.ttc", None),
+    ("wqy-microhei.ttc", None),
+    ("DroidSansFallbackFull.ttf", None),
+    ("uming.ttc", None),
+    ("ukai.ttc", None),
+    # macOS
+    ("PingFang.ttc", 0),
+    ("STHeiti Light.ttc", 0),
+    ("Hiragino Sans GB.ttc", 0),
+    ("Arial Unicode.ttf", None),
 ]
 
 
-def register_fonts():
-    for fname, sub in FONT_CANDIDATES:
-        path = FONT_DIR / fname
-        if not path.exists():
+def _download_noto(dest: Path) -> bool:
+    """尝试下载 Noto Sans SC 到 dest（TTF 可变字体，ReportLab 兼容）。失败返回 False。"""
+    urls = [
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
+        "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
+    ]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    for url in urls:
+        try:
+            urllib.request.urlretrieve(url, dest)
+            if dest.stat().st_size > 100_000:   # 简单校验: >100KB 才认为有效
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def register_fonts() -> str:
+    """尝试注册一个 CJK 字体。兜底顺序: 本地 → 系统 → 下载 → Helvetica。"""
+    for fname, sub in _FONT_CANDIDATES:
+        fp = _find_font(fname, _FONT_DIRS)
+        if fp is None:
             continue
         try:
             if sub is not None:
-                pdfmetrics.registerFont(TTFont("CJK", str(path), subfontIndex=sub))
+                pdfmetrics.registerFont(TTFont("CJK", str(fp), subfontIndex=sub))
             else:
-                pdfmetrics.registerFont(TTFont("CJK", str(path)))
+                pdfmetrics.registerFont(TTFont("CJK", str(fp)))
+            print(f"[font] registered: {fp}")
             return "CJK"
         except Exception:
             continue
+
+    # 所有本地/系统候选都失败 → 尝试下载 Noto
+    noto_path = Path(__file__).parent / "fonts" / "NotoSansSC-Regular.ttf"
+    if not noto_path.exists():
+        print("[font] no system CJK font, downloading Noto Sans SC ...")
+        _download_noto(noto_path)
+
+    if noto_path.exists():
+        try:
+            pdfmetrics.registerFont(TTFont("CJK", str(noto_path)))
+            print(f"[font] registered (downloaded): {noto_path}")
+            return "CJK"
+        except Exception:
+            pass
+
+    print("[font] WARNING: no CJK font available, falling back to Helvetica")
     return "Helvetica"
 
 
