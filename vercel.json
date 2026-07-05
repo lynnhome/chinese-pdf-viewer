@@ -1,11 +1,8 @@
 {
   "framework": null,
-  "buildCommand": "pip install -r requirements.txt && python -c \"import nltk\" 2>/dev/null || true",
-  "outputDirectory": ".",
   "functions": {
     "api/index.py": {
-      "runtime": "python@3.10",
-      "maxDuration": 30
+      "runtime": "@vercel/python"
     }
   },
   "routes": [
