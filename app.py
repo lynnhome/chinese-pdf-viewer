@@ -128,34 +128,49 @@ _FONT_CANDIDATES: list[tuple[str, int | None]] = [
 ]
 
 
+_NOTO_URLS = [
+    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
+]
+
+
 def _download_noto(dest: Path) -> bool:
-    """尝试下载 Noto Sans SC 到 dest（TTF 可变字体，ReportLab 兼容）。失败返回 False。"""
-    urls = [
-        "https://raw.githubusercontent.com/notofonts/noto-cjk/main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
-        "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
-    ]
+    """下载 Noto Sans SC 到 dest。失败返回 False。"""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    for url in urls:
+    for url in _NOTO_URLS:
         try:
+            print(f"[font] downloading from {url} ...")
             urllib.request.urlretrieve(url, dest)
-            if dest.stat().st_size > 100_000:   # 简单校验: >100KB 才认为有效
+            size = dest.stat().st_size
+            print(f"[font] downloaded {size} bytes")
+            if size > 1_000_000:   # >1MB 才认为有效
                 return True
-        except Exception:
+        except Exception as e:
+            print(f"[font] download failed: {e}")
             continue
     return False
 
 
 def register_fonts() -> str:
-    """尝试注册一个 CJK 字体。兜底顺序: 本地 → 系统 → 下载 → Helvetica。"""
-    print(f"[font] __file__ = {__file__}")
-    print(f"[font] CWD    = {Path.cwd()}")
-    print(f"[font] search dirs ({len(_FONT_DIRS)}):")
-    for d in _FONT_DIRS:
-        print(f"        {d}  exists={d.exists()}")
+    """尝试注册一个 CJK 字体。
 
+    优先级:
+      1. 项目本地 / 系统目录中的字体文件
+      2. /tmp/ 缓存的 Noto (Vercel 可写目录)
+      3. 从 CDN 下载到 /tmp/ 后注册
+      4. Helvetica 兜底
+    """
+    # --- 第 1 步: 搜索本地/系统字体 ---
     for fname, sub in _FONT_CANDIDATES:
         fp = _find_font(fname, _FONT_DIRS)
         if fp is None:
+            continue
+        # 跳过明显不是真实字体的文件 (<1KB 说明是占位符/损坏)
+        try:
+            if fp.stat().st_size < 1000:
+                print(f"[font] skip {fp} (only {fp.stat().st_size} bytes, probably placeholder)")
+                continue
+        except Exception:
             continue
         try:
             if sub is not None:
@@ -168,21 +183,26 @@ def register_fonts() -> str:
             print(f"[font] candidate {fname} at {fp} failed: {e}")
             continue
 
-    # 所有本地/系统候选都失败 → 尝试下载 Noto
-    noto_path = Path(__file__).parent / "fonts" / "NotoSansSC-Regular.ttf"
-    if not noto_path.exists():
-        # 也检查 CWD 下的 fonts/
-        alt = Path.cwd() / "fonts" / "NotoSansSC-Regular.ttf"
-        if alt.exists():
-            noto_path = alt
-    if not noto_path.exists():
-        print("[font] no system CJK font, downloading Noto Sans SC ...")
-        _download_noto(noto_path)
-
-    if noto_path.exists():
+    # --- 第 2 步: 使用 /tmp/ 缓存或下载新字体 ---
+    # Vercel 的 /tmp 可写 (500MB), 冷启动之间持久化
+    tmp_font = Path("/tmp") / "NotoSansSC-Regular.ttf"
+    if tmp_font.exists() and tmp_font.stat().st_size > 1_000_000:
         try:
-            pdfmetrics.registerFont(TTFont("CJK", str(noto_path)))
-            print(f"[font] registered (downloaded): {noto_path}")
+            pdfmetrics.registerFont(TTFont("CJK", str(tmp_font)))
+            print(f"[font] registered from cache: {tmp_font}")
+            return "CJK"
+        except Exception as e:
+            print(f"[font] cached font failed: {e}")
+
+    # 下载到 /tmp/
+    if not tmp_font.exists() or tmp_font.stat().st_size < 1_000_000:
+        print("[font] downloading Noto Sans SC to /tmp/ ...")
+        _download_noto(tmp_font)
+
+    if tmp_font.exists() and tmp_font.stat().st_size > 1_000_000:
+        try:
+            pdfmetrics.registerFont(TTFont("CJK", str(tmp_font)))
+            print(f"[font] registered (downloaded): {tmp_font}")
             return "CJK"
         except Exception as e:
             print(f"[font] downloaded font failed: {e}")
