@@ -102,8 +102,10 @@ def _discover_font_dirs() -> list[Path]:
 _FONT_DIRS = _discover_font_dirs() + _system_font_dirs()
 
 _FONT_CANDIDATES: list[tuple[str, int | None]] = [
-    # Windows
-    ("simkai.ttf", None),
+    # 楷体 / 楷体风格 (优先)
+    ("simkai.ttf", None),           # Windows 楷体
+    ("MaShanZheng-Regular.ttf", None),  # 马善政楷书 (Google Fonts)
+    # Windows 其他
     ("msyh.ttc", 0),
     ("msyh.ttc", 1),
     ("msyhbd.ttc", 0),
@@ -128,22 +130,25 @@ _FONT_CANDIDATES: list[tuple[str, int | None]] = [
 ]
 
 
-_NOTO_URLS = [
-    "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
-    "https://raw.githubusercontent.com/notofonts/noto-cjk/main/google-fonts/NotoSansSC%5Bwght%5D.ttf",
+# Ma Shan Zheng (马善政楷书) - Google Fonts 上的开源楷体风格字体
+# 国内可访问的 CDN: jsdelivr / gcore.jsdelivr
+_FONT_URLS = [
+    "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mashanzheng/MaShanZheng-Regular.ttf",
+    "https://gcore.jsdelivr.net/gh/google/fonts@main/ofl/mashanzheng/MaShanZheng-Regular.ttf",
+    "https://raw.githubusercontent.com/google/fonts/main/ofl/mashanzheng/MaShanZheng-Regular.ttf",
 ]
 
 
 def _download_noto(dest: Path) -> bool:
     """下载 Noto Sans SC 到 dest。失败返回 False。"""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    for url in _NOTO_URLS:
+    for url in _FONT_URLS:
         try:
             print(f"[font] downloading from {url} ...")
             urllib.request.urlretrieve(url, dest)
             size = dest.stat().st_size
             print(f"[font] downloaded {size} bytes")
-            if size > 1_000_000:   # >1MB 才认为有效
+            if size > 100_000:   # >100KB 才认为有效
                 return True
         except Exception as e:
             print(f"[font] download failed: {e}")
@@ -185,8 +190,8 @@ def register_fonts() -> str:
 
     # --- 第 2 步: 使用 /tmp/ 缓存或下载新字体 ---
     # Vercel 的 /tmp 可写 (500MB), 冷启动之间持久化
-    tmp_font = Path("/tmp") / "NotoSansSC-Regular.ttf"
-    if tmp_font.exists() and tmp_font.stat().st_size > 1_000_000:
+    tmp_font = Path("/tmp") / "MaShanZheng-Regular.ttf"
+    if tmp_font.exists() and tmp_font.stat().st_size > 100_000:
         try:
             pdfmetrics.registerFont(TTFont("CJK", str(tmp_font)))
             print(f"[font] registered from cache: {tmp_font}")
@@ -195,11 +200,11 @@ def register_fonts() -> str:
             print(f"[font] cached font failed: {e}")
 
     # 下载到 /tmp/
-    if not tmp_font.exists() or tmp_font.stat().st_size < 1_000_000:
-        print("[font] downloading Noto Sans SC to /tmp/ ...")
+    if not tmp_font.exists() or tmp_font.stat().st_size < 100_000:
+        print("[font] downloading Ma Shan Zheng (楷体) to /tmp/ ...")
         _download_noto(tmp_font)
 
-    if tmp_font.exists() and tmp_font.stat().st_size > 1_000_000:
+    if tmp_font.exists() and tmp_font.stat().st_size > 100_000:
         try:
             pdfmetrics.registerFont(TTFont("CJK", str(tmp_font)))
             print(f"[font] registered (downloaded): {tmp_font}")
