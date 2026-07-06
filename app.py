@@ -778,13 +778,13 @@ def debug():
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
-    # 尝试直接注册并捕获详细错误
+    # 尝试直接注册并捕获详细错误（测试所有候选）
     font_test: dict = {}
-    for fname, sub in _FONT_CANDIDATES[:6]:
+    for fname, sub in _FONT_CANDIDATES:
         fp = _find_font(fname, _FONT_DIRS)
         if fp is None:
             continue
-        entry: dict = {"path": str(fp)}
+        entry: dict = {"path": str(fp), "size": fp.stat().st_size}
         try:
             ttf = TTFont("TestCJK", str(fp), subfontIndex=sub) if sub is not None else TTFont("TestCJK", str(fp))
             pdfmetrics.registerFont(ttf)
