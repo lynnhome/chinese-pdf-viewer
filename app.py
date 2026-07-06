@@ -775,7 +775,25 @@ def index():
 @app.route("/debug", methods=["GET"])
 def debug():
     """诊断接口: 返回字体搜索路径和文件系统状态（部署后用于排查）。"""
-    import json
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    # 尝试直接注册并捕获详细错误
+    font_test: dict = {}
+    for fname, sub in _FONT_CANDIDATES[:6]:
+        fp = _find_font(fname, _FONT_DIRS)
+        if fp is None:
+            continue
+        entry: dict = {"path": str(fp)}
+        try:
+            ttf = TTFont("TestCJK", str(fp), subfontIndex=sub) if sub is not None else TTFont("TestCJK", str(fp))
+            pdfmetrics.registerFont(ttf)
+            entry["register"] = "OK"
+        except Exception as e:
+            entry["register"] = "FAIL"
+            entry["error"] = f"{type(e).__name__}: {e}"
+        font_test[fname] = entry
+
     info = {
         "font_name": FONT_NAME,
         "__file__": __file__,
@@ -786,6 +804,7 @@ def debug():
              "files": [f.name for f in d.iterdir() if f.is_file()] if d.exists() else []}
             for d in _FONT_DIRS
         ],
+        "font_test": font_test,
     }
     return info
 
