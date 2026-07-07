@@ -82,6 +82,30 @@
             transition: transform .12s, box-shadow .2s, background .2s;
             white-space: nowrap;
         }
+
+        .rows-select {
+            padding: 14px 12px;
+            font-size: 15px;
+            font-weight: 600;
+            border: 2px solid #c9a97a;
+            border-radius: 10px;
+            background: #fffdf9;
+            color: #3d2914;
+            cursor: pointer;
+            outline: none;
+            min-width: 80px;
+            text-align: center;
+        }
+        .rows-select:focus {
+            border-color: #a67042;
+            box-shadow: 0 0 0 3px rgba(166, 112, 66, 0.18);
+        }
+        .rows-label {
+            font-size: 14px;
+            color: #7a6450;
+            align-self: center;
+            white-space: nowrap;
+        }
         .btn:active { transform: scale(0.97); }
 
         .btn-generate {
@@ -174,6 +198,21 @@
                     autocomplete="off"
                     autofocus
                 >
+                <span class="rows-label">行数</span>
+                <select class="rows-select" id="rows-select" title="每个字的行数">
+                    <option value="1">1行</option>
+                    <option value="2">2行</option>
+                    <option value="3" selected>3行</option>
+                    <option value="4">4行</option>
+                    <option value="5">5行</option>
+                    <option value="6">6行</option>
+                    <option value="7">7行</option>
+                    <option value="8">8行</option>
+                    <option value="9">9行</option>
+                    <option value="10">10行</option>
+                    <option value="11">11行</option>
+                    <option value="12">12行</option>
+                </select>
                 <button class="btn btn-generate" id="btn-generate">生成描红</button>
                 <button class="btn btn-download" id="btn-download">下载 PDF</button>
             </div>
@@ -201,6 +240,7 @@
         const btnDl      = document.getElementById('btn-download');
         const charCount  = document.getElementById('char-count');
         const pdfStatus  = document.getElementById('pdf-status');
+        const rowsSelect = document.getElementById('rows-select');
 
         function countChars(text) {
             return [...text.replace(/\s/g, '')].length;
@@ -216,7 +256,8 @@
                 pdfStatus.textContent = '⚠️ 请先输入汉字';
                 return;
             }
-            const url = '/pdf?text=' + encodeURIComponent(text);
+            const rows = rowsSelect.value;
+            const url = '/pdf?text=' + encodeURIComponent(text) + '&rows=' + rows;
             pdfStatus.textContent = '正在生成 …';
             viewer.src = url;
             viewer.onload = () => { pdfStatus.textContent = '✅ 生成完毕'; };
@@ -230,11 +271,16 @@
         });
 
         input.addEventListener('input', refreshCount);
+        // 改变行数时自动重新生成（如果有内容）
+        rowsSelect.addEventListener('change', () => {
+            if (input.value.trim()) generate();
+        });
 
         btnDl.addEventListener('click', () => {
             const text = input.value.trim();
             if (!text) { alert('请先输入汉字'); return; }
-            window.location.href = '/pdf/download?text=' + encodeURIComponent(text);
+            const rows = rowsSelect.value;
+            window.location.href = '/pdf/download?text=' + encodeURIComponent(text) + '&rows=' + rows;
         });
 
         // 初始化

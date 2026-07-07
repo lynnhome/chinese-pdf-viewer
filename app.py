@@ -676,7 +676,7 @@ MARGIN_BOT  = 12 * mm
 BLOCK_GAP   = 4 * mm    # 字间间距
 CELL        = 18 * mm   # 单格边长
 CELLS_ROW   = 10        # 每行格数（2描红+2自写+2描红+2自写+1描红+1自写）
-CELLS_COL   = 3         # 行数
+CELLS_COL   = 3         # 默认行数（会被 rows 参数覆盖）
 GRID_W      = CELLS_ROW * CELL   # 180 mm
 BLOCK_W     = GRID_W             # 180 mm（无左栏）
 BLOCK_H     = CELLS_COL * CELL   # 54 mm
@@ -711,18 +711,19 @@ def draw_tianzi(c, x, y, size, char=None, char_color=None, show_mizi=True):
         c.drawCentredString(x + size / 2, cy, char)
 
 
-def draw_char_block(c, x, y, char, stroke_count, stroke_names):
+def draw_char_block(c, x, y, char, stroke_count, stroke_names, cells_col: int = 3):
     """
     在 (x, y) 处画一个完整的描红区块。
-    左栏: 笔画数(大) + 笔顺名(小)
-    右侧: 3 行 × (3 描红 + 3 自写)
+    右侧: cells_col 行 × 10 格 (2描红+2自写+2描红+2自写+1描红+1自写)
     """
+    block_h = cells_col * CELL
+
     # 区块背景
     c.setFillColor(HexColor("#FFFBF5"))
-    c.roundRect(x, y, BLOCK_W, BLOCK_H, 3 * mm, fill=1, stroke=0)
+    c.roundRect(x, y, BLOCK_W, block_h, 3 * mm, fill=1, stroke=0)
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.4)
-    c.roundRect(x, y, BLOCK_W, BLOCK_H, 3 * mm, fill=0, stroke=1)
+    c.roundRect(x, y, BLOCK_W, block_h, 3 * mm, fill=0, stroke=1)
 
     # ---- 右侧网格 ----
     # 10 格一组: 2描红 + 2自写 + 2描红 + 2自写 + 1描红 + 1自写
@@ -730,21 +731,25 @@ def draw_char_block(c, x, y, char, stroke_count, stroke_names):
     TRACE_COLS = {0, 1, 4, 5, 8}
     gx = x
     gy = y
-    for row in range(CELLS_COL):
+    for row in range(cells_col):
         for col in range(CELLS_ROW):
             cx = gx + col * CELL
-            cy = gy + (CELLS_COL - 1 - row) * CELL
+            cy = gy + (cells_col - 1 - row) * CELL
             if col in TRACE_COLS:
                 draw_tianzi(c, cx, cy, CELL, char, COLOR_CHAR, show_mizi=True)
             else:
                 draw_tianzi(c, cx, cy, CELL, None, None, show_mizi=True)
 
 
-def generate_pdf(text: str) -> io.BytesIO:
-    """生成描红练习 PDF。"""
+def generate_pdf(text: str, rows: int = 3) -> io.BytesIO:
+    """生成描红练习 PDF。rows: 每个字的行数 (1~12)。"""
     chars = [ch for ch in text.strip() if ch.strip()]
     if not chars:
         chars = [" "]
+
+    # 根据行数动态计算区块高度
+    cells_col = max(1, min(12, rows))
+    block_h = cells_col * CELL
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
@@ -757,7 +762,7 @@ def generate_pdf(text: str) -> io.BytesIO:
     # 每行放几个字
     per_row = max(1, int((usable_w + BLOCK_GAP) / (BLOCK_W + BLOCK_GAP)))
     # 每列放几个字
-    per_col = max(1, int((usable_h + BLOCK_GAP) / (BLOCK_H + BLOCK_GAP)))
+    per_col = max(1, int((usable_h + BLOCK_GAP) / (block_h + BLOCK_GAP)))
     per_page = per_row * per_col
 
     idx = 0
@@ -777,9 +782,9 @@ def generate_pdf(text: str) -> io.BytesIO:
             row = i // per_row
             col = i % per_row
             bx = MARGIN_X + col * (BLOCK_W + BLOCK_GAP)
-            by = page_h - MARGIN_TOP - 8 * mm - (row + 1) * (BLOCK_H + BLOCK_GAP)
+            by = page_h - MARGIN_TOP - 8 * mm - (row + 1) * (block_h + BLOCK_GAP)
             ch = chars[idx]
-            draw_char_block(c, bx, by, ch, get_stroke_count(ch), get_progressive_forms(ch))
+            draw_char_block(c, bx, by, ch, get_stroke_count(ch), get_progressive_forms(ch), cells_col=cells_col)
             idx += 1
 
         c.showPage()
@@ -840,7 +845,8 @@ def serve_pdf():
     text = request.args.get("text", "").strip()
     if not text:
         abort(400, "缺少 text 参数")
-    buf = generate_pdf(text)
+    rows = _parse_rows(request.args.get("rows", "3"))
+    buf = generate_pdf(text, rows=rows)
     return send_file(buf, mimetype="application/pdf",
                      download_name="hongzi.pdf", as_attachment=False)
 
@@ -850,9 +856,19 @@ def download_pdf():
     text = request.args.get("text", "").strip()
     if not text:
         abort(400, "缺少 text 参数")
-    buf = generate_pdf(text)
+    rows = _parse_rows(request.args.get("rows", "3"))
+    buf = generate_pdf(text, rows=rows)
     return send_file(buf, mimetype="application/pdf",
                      download_name="汉字描红练习.pdf", as_attachment=True)
+
+
+def _parse_rows(value: str) -> int:
+    """解析行数参数，限制在 1~12。"""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 3
+    return max(1, min(12, n))
 
 
 # ---------------------------------------------------------------------------
