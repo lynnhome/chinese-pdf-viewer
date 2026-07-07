@@ -104,7 +104,7 @@ _FONT_DIRS = _discover_font_dirs() + _system_font_dirs()
 _FONT_CANDIDATES: list[tuple[str, int | None]] = [
     # 楷体 / 楷体风格 (优先)
     ("simkai.ttf", None),           # Windows 楷体
-    ("MaShanZheng-Regular.ttf", None),  # 马善政楷书 (Google Fonts)
+    ("LXGWWenKai-Regular.ttf", None),  # 霞鹜文楷
     # Windows 其他
     ("msyh.ttc", 0),
     ("msyh.ttc", 1),
@@ -130,17 +130,18 @@ _FONT_CANDIDATES: list[tuple[str, int | None]] = [
 ]
 
 
-# Ma Shan Zheng (马善政楷书) - Google Fonts 上的开源楷体风格字体
-# 国内可访问的 CDN: jsdelivr / gcore.jsdelivr
+# 霞鹜文楷 (LXGW WenKai) - 开源楷体 TrueType 字体
+# GitHub: https://github.com/lxgw/LxgwWenKai
+# 国内可访问: GitHub release 直连 (jsdelivr 对 release 资源支持不好)
 _FONT_URLS = [
-    "https://zf.sc.chinaz.com/Files/DownLoad/upload/2024/0112/hanchanzhengkaiti.ttf",
-    "https://zf.sc.chinaz.com/Files/DownLoad/upload/2024/0112/hanchanzhengkaiti.ttf",
-    "https://zf.sc.chinaz.com/Files/DownLoad/upload/2024/0112/hanchanzhengkaiti.ttf",
+    "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
+    "https://ghfast.top/https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
+    "https://gcore.jsdelivr.net/gh/lxgw/LxgwWenKai@v1.522/LXGWWenKai-Regular.ttf",
 ]
 
 
-def _download_noto(dest: Path) -> bool:
-    """下载 Noto Sans SC 到 dest。失败返回 False。"""
+def _download_font(dest: Path) -> bool:
+    """下载霞鹜文楷到 dest。失败返回 False。"""
     dest.parent.mkdir(parents=True, exist_ok=True)
     for url in _FONT_URLS:
         try:
@@ -190,7 +191,7 @@ def register_fonts() -> str:
 
     # --- 第 2 步: 使用 /tmp/ 缓存或下载新字体 ---
     # Vercel 的 /tmp 可写 (500MB), 冷启动之间持久化
-    tmp_font = Path("/tmp") / "MaShanZheng-Regular.ttf"
+    tmp_font = Path("/tmp") / "LXGWWenKai-Regular.ttf"
     if tmp_font.exists() and tmp_font.stat().st_size > 100_000:
         try:
             pdfmetrics.registerFont(TTFont("CJK", str(tmp_font)))
@@ -202,7 +203,7 @@ def register_fonts() -> str:
     # 下载到 /tmp/
     if not tmp_font.exists() or tmp_font.stat().st_size < 100_000:
         print("[font] downloading Ma Shan Zheng (楷体) to /tmp/ ...")
-        _download_noto(tmp_font)
+        _download_font(tmp_font)
 
     if tmp_font.exists() and tmp_font.stat().st_size > 100_000:
         try:
