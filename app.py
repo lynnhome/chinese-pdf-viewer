@@ -133,9 +133,9 @@ _FONT_CANDIDATES: list[tuple[str, int | None]] = [
 # Ma Shan Zheng (马善政楷书) - Google Fonts 上的开源楷体风格字体
 # 国内可访问的 CDN: jsdelivr / gcore.jsdelivr
 _FONT_URLS = [
-    "https://github.com/chengda/popular-fonts/blob/master/华文楷体.ttf",
-    "https://github.com/chengda/popular-fonts/blob/master/华文楷体.ttf",
-    "https://github.com/chengda/popular-fonts/blob/master/华文楷体.ttf",
+    "https://zf.sc.chinaz.com/Files/DownLoad/upload/2024/0112/hanchanzhengkaiti.ttf",
+    "https://zf.sc.chinaz.com/Files/DownLoad/upload/2024/0112/hanchanzhengkaiti.ttf",
+    "https://zf.sc.chinaz.com/Files/DownLoad/upload/2024/0112/hanchanzhengkaiti.ttf",
 ]
 
 
